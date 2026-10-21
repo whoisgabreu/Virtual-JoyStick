@@ -1,0 +1,12 @@
+fastapi==0.143.2
+uvicorn==0.54.0
+websockets==17.2
+aiortc==1.15.0
+av==17.1.0
+mss==10.2.0
+pillow==12.3.0
+numpy==2.5.4
+qrcode[pil]==8.2
+vgamepad==0.1.0
+# vgamepad no Linux usa libevdev/uinput; no Windows usa ViGEmBus (driver instalado pelo proprio pacote)
+libevdev==0.13.1; sys_platform == "linux"

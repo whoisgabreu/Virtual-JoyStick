@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Gerenciar controles</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { width:100%; min-height:100%; background:#0b0b0d; color:#fff; font-family:Arial, sans-serif; }
+    body { display:flex; flex-direction:column; gap:3vmin; padding:5vmin; max-width:920px; margin:0 auto; }
+    h1 { font-size:6vmin; }
+    .sub { font-size:3vmin; color:#8a8a8a; }
+    a { color:#9aa0a6; font-size:3.4vmin; text-decoration:none; }
+    .row { background:#16161a; border:2px solid #26262c; border-radius:3vmin; padding:3.5vmin; display:flex; flex-direction:column; gap:2.5vmin; }
+    .who { display:flex; flex-direction:column; gap:0.5vmin; }
+    .name { font-size:4.2vmin; font-weight:bold; }
+    .id { font-size:2.6vmin; color:#6f6f6f; }
+    .meta { display:flex; align-items:center; gap:2vmin; flex-wrap:wrap; }
+    .muted { font-size:2.8vmin; color:#9aa0a6; }
+    .badge { font-size:2.8vmin; font-weight:bold; padding:0.8vmin 2vmin; border-radius:2vmin; }
+    .badge.ctrl { background:rgba(30,136,229,0.3); color:#9ecbff; }
+    .badge.tela { background:rgba(67,160,71,0.3); color:#a5e0a7; }
+    .badge.spec { background:rgba(255,255,255,0.12); color:#cfcfcf; }
+    .acts { display:flex; flex-wrap:wrap; gap:2vmin; align-items:center; }
+    form { display:flex; gap:1.5vmin; margin:0; }
+    input[type=text] { font-size:3.4vmin; padding:2vmin; border-radius:1.6vmin; border:2px solid #555; background:#111; color:#fff; width:22vmin; }
+    button { font-size:3.2vmin; font-weight:bold; padding:2vmin 3vmin; border-radius:2vmin; border:none; background:#1e88e5; color:#fff; }
+    button.danger { background:#e53935; }
+    button:active { filter:brightness(1.25); }
+    .empty { font-size:3.6vmin; color:#8a8a8a; }
+    .head { display:flex; justify-content:space-between; align-items:flex-end; gap:3vmin; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+    <div class="head">
+        <div>
+            <h1>Gerenciar controles</h1>
+            <p class="sub">Ate {{total}} controles simultaneos. Um UUID por celular mantem o numero do Jogador.</p>
+        </div>
+        <a href="#" id="refresh">Atualizar</a>
+    </div>
+    {{list}}
+    <a href="#" id="back">&larr; Voltar ao painel</a>
+    <script>
+        (function () {
+            var qs = location.search;
+            // propaga o token na URL e nos formularios/links
+            document.querySelectorAll('form').forEach(function (f) {
+                f.action = f.getAttribute('action') + qs;
+            });
+            var back = document.getElementById('back');
+            back.href = '/' + qs;
+            var refresh = document.getElementById('refresh');
+            refresh.href = location.pathname + qs;
+            // auto-atualiza a cada 5s, exceto enquanto digita um nome
+            setInterval(function () {
+                var active = document.activeElement;
+                if (active && active.tagName === 'INPUT') return;
+                location.reload();
+            }, 5000);
+        })();
+    </script>
+</body>
+</html>

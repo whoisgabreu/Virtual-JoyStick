@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Configuracao</title>
+<style>
+    * { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+    html, body { width:100%; min-height:100%; background:#000; color:#fff; font-family:Arial, sans-serif; }
+    body { display:flex; flex-direction:column; align-items:center; gap:3vmin; padding:6vmin; }
+    h1 { font-size:6vmin; }
+    form { display:flex; flex-direction:column; gap:4vmin; width:100%; max-width:520px; }
+    label { display:flex; flex-direction:column; font-size:3.5vmin; gap:1.5vmin; color:#cfcfcf; }
+    input, select { font-size:4.5vmin; padding:3vmin; border-radius:2vmin; border:2px solid #555; background:#111; color:#fff; }
+    .hint { font-size:2.8vmin; color:#7a7a7a; }
+    button { font-size:4.5vmin; font-weight:bold; padding:4vmin; border-radius:3vmin; border:none; background:#1e88e5; color:#fff; }
+    button:active { filter:brightness(1.25); }
+    a { color:#9aa0a6; font-size:3.5vmin; text-decoration:none; }
+    .ok { color:#7fff7f; font-size:3.5vmin; }
+</style>
+</head>
+<body>
+    <h1>Configuracao</h1>
+    {{notice}}
+    <form method="post" action="/config">
+        <label>Largura da imagem (px)
+            <input type="number" name="out_width" min="320" max="3840" step="16" value="{{out_width}}">
+            <span class="hint">Menor = mais fluido | Maior = mais nitido (ex: 960, 1280, 1920)</span>
+        </label>
+        <label>FPS maximo
+            <input type="number" name="fps" min="5" max="120" step="1" value="{{fps}}">
+            <span class="hint">Mais alto = mais fluido (custa CPU e banda)</span>
+        </label>
+        <label>Bitrate (kbps)
+            <input type="number" name="bitrate_kbps" min="500" max="20000" step="100" value="{{bitrate_kbps}}">
+            <span class="hint">Maior = melhor em movimento (mais banda no Wi-Fi)</span>
+        </label>
+        <label>Tipo de encoder
+            <select name="encoder">
+                {{encoder_options}}
+            </select>
+            <span class="hint">libx264 = software (sempre funciona) | auto/vaapi = tenta hardware</span>
+        </label>
+        <label>Preset do x264 (velocidade x qualidade)
+            <select name="preset">
+                {{preset_options}}
+            </select>
+            <span class="hint">ultrafast = mais rapido/leve | medium = melhor qualidade (mais CPU)</span>
+        </label>
+        <label>Token de acesso (opcional)
+            <input type="text" name="token" maxlength="64" value="{{token}}" placeholder="vazio = sem senha">
+            <span class="hint">Se preenchido, o acesso exige ?token=... na URL</span>
+        </label>
+        <button type="submit">Salvar</button>
+    </form>
+    <a href="/">&larr; Voltar ao menu</a>
+    <script>
+        (function () {
+            var qs = location.search;
+            if (!qs) return;
+            document.forms[0].action = "/config" + qs;
+            var back = document.querySelector('a[href="/"]');
+            if (back) back.href = "/" + qs;
+        })();
+    </script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# Estes arquivos são gerados em runtime / locais — não versionar
+.venv/
+__pycache__/
+*.pyc
+config.json
+.env
+*.log

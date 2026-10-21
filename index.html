@@ -1,0 +1,1064 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Controle Remoto WebRTC</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        html, body {
+            width: 100%; height: 100%; overflow: hidden;
+            background: #000; color: #fff; font-family: Arial, sans-serif;
+            user-select: none; touch-action: none;
+            -webkit-touch-callout: none; -webkit-user-select: none;
+        }
+        #video {
+            position: absolute; inset: 0; width: 100%; height: 100%;
+            object-fit: contain; background: #000; pointer-events: none;
+        }
+        #hud {
+            position: absolute; top: 0.5vmin; left: 0; width: 100%;
+            display: flex; justify-content: space-between; padding: 0 3vmin;
+            padding-right: 22vmin;
+            font-size: 3vmin; z-index: 20; pointer-events: none;
+            text-shadow: 0 0 6px #000;
+        }
+        #player { color: #7fff7f; font-weight: bold; }
+        #status { color: #ffcf66; }
+
+        #overlay { position: absolute; inset: 0; z-index: 10; pointer-events: none; }
+
+        /* Regiões de posicionamento dos layouts */
+        .region { position: absolute; pointer-events: none; }
+        .region.bl { left: 3vmin; bottom: 3vmin; display: flex; flex-direction: column; align-items: center; gap: 2.5vmin; }
+        .region.br { right: 3vmin; bottom: 3vmin; display: flex; flex-direction: column; align-items: center; gap: 2.5vmin; }
+        .region.left { left: 3vmin; top: 12vmin; bottom: 3vmin; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2.5vmin; }
+        .region.right { right: 3vmin; top: 18vmin; bottom: 3vmin; width: 48%; display: flex; flex-direction: column; align-items: stretch; justify-content: flex-end; gap: 2vmin; }
+        .region.bottom { left: 0; right: 0; bottom: 3vmin; display: flex; justify-content: center; }
+
+        /* Ajustes específicos do layout de corrida (volante na base) */
+        #overlay.layout-racing .region.bl,
+        #overlay.layout-racing .region.br { bottom: 22vmin; }
+        #overlay.layout-racing .region.br { flex-direction: row; align-items: flex-end; }
+
+        /* Botões genéricos */
+        .btn, .small, .abtn, .pedal, .stick, .lookpad, .wheel, .radialabxy { -webkit-user-select: none; user-select: none; }
+        .btn {
+            pointer-events: auto; background: rgba(40,40,40,0.55);
+            border: 2px solid rgba(200,200,200,0.35); color: #fff;
+            display: flex; justify-content: center; align-items: center;
+            font-weight: bold; border-radius: 50%;
+        }
+        .btn:active, .btn.pressed { background: rgba(30,136,229,0.85); }
+
+        .small {
+            pointer-events: auto; min-width: 12vmin; padding: 2vmin 0;
+            border-radius: 2vmin; background: rgba(40,40,40,0.55);
+            border: 2px solid rgba(200,200,200,0.35);
+            text-align: center; font-size: 3vmin; font-weight: bold;
+        }
+        .small:active, .small.pressed { background: rgba(30,136,229,0.85); }
+        .small.tiny { min-width: 9vmin; padding: 1.4vmin 0; font-size: 2.6vmin; }
+
+        .abtn {
+            pointer-events: auto; width: 14vmin; height: 14vmin; border-radius: 50%;
+            background: rgba(40,40,40,0.55); border: 2px solid rgba(200,200,200,0.35);
+            color: #fff; display: flex; justify-content: center; align-items: center;
+            font-weight: bold; font-size: 4vmin;
+        }
+        .abtn:active, .abtn.pressed { background: rgba(30,136,229,0.85); }
+        .abtn.xsmall { width: 9vmin; height: 9vmin; font-size: 3vmin; }
+        .abtn.big { width: 20vmin; height: 20vmin; font-size: 5vmin; }
+
+        .pedal {
+            pointer-events: auto; width: 24vmin; height: 30vmin; border-radius: 3vmin;
+            background: rgba(40,40,40,0.5); border: 2px solid rgba(200,200,200,0.35);
+            display: flex; justify-content: center; align-items: center;
+            font-size: 4vmin; font-weight: bold;
+        }
+        .pedal:active, .pedal.pressed { background: rgba(30,136,229,0.85); }
+
+        /* Topbar (ombros / gatilhos / start) */
+        .topbar {
+            position: absolute; top: 7vmin; left: 0; width: 100%;
+            display: flex; justify-content: space-between; padding: 0 3vmin; z-index: 11;
+            pointer-events: none;
+        }
+        .topbar .group { display: flex; gap: 2vmin; pointer-events: none; }
+
+        /* Analógico */
+        .stick {
+            position: relative; width: 22vmin; height: 22vmin; border-radius: 50%;
+            background: rgba(40,40,40,0.35); border: 2px solid rgba(200,200,200,0.35);
+            pointer-events: auto; touch-action: none;
+        }
+        .stick .knob, .stick .dot {
+            position: absolute; top: 50%; left: 50%; width: 40%; height: 40%;
+            margin: -20% 0 0 -20%; border-radius: 50%;
+            background: rgba(220,220,220,0.6); border: 2px solid rgba(255,255,255,0.5);
+        }
+        .stick .label {
+            position: absolute; top: -3.2vmin; left: 50%; transform: translateX(-50%);
+            font-size: 2.4vmin; color: rgba(255,255,255,0.6); white-space: nowrap;
+        }
+        .stick.touch { background: rgba(30,120,200,0.16); border-style: dashed; }
+        .stick.touch .dot { width: 26%; height: 26%; margin: -13% 0 0 -13%; background: rgba(120,200,255,0.85); }
+        .stick.big { width: 34vmin; height: 34vmin; }
+        .stick.mini { width: 15vmin; height: 15vmin; }
+
+        /* D-pad */
+        .dpad {
+            display: grid; grid-template-columns: repeat(3, 9vmin);
+            grid-template-rows: repeat(3, 9vmin); gap: 1.4vmin; pointer-events: auto;
+        }
+        .dpad.big { grid-template-columns: repeat(3, 13vmin); grid-template-rows: repeat(3, 13vmin); }
+        .dpad .btn { font-size: 3.6vmin; }
+        .dpad.big .btn { font-size: 5vmin; }
+        .dpad .d-up { grid-column: 2; grid-row: 1; }
+        .dpad .d-left { grid-column: 1; grid-row: 2; }
+        .dpad .d-right { grid-column: 3; grid-row: 2; }
+        .dpad .d-down { grid-column: 2; grid-row: 3; }
+
+        /* A/B/X/Y */
+        .abxy {
+            display: grid; grid-template-columns: repeat(3, 9vmin);
+            grid-template-rows: repeat(3, 9vmin); gap: 1.4vmin; pointer-events: auto;
+        }
+        .abxy .btn { font-size: 3.6vmin; }
+        .abxy .a-y { grid-column: 2; grid-row: 1; background: rgba(253,216,53,0.7); color: #000; }
+        .abxy .a-x { grid-column: 1; grid-row: 2; background: rgba(30,136,229,0.7); }
+        .abxy .a-b { grid-column: 3; grid-row: 2; background: rgba(229,57,53,0.7); }
+        .abxy .a-a { grid-column: 2; grid-row: 3; background: rgba(67,160,71,0.7); }
+
+        /* Pad radial ABXY (círculo; 4 setores de 25% = 90°, divisórias nas diagonais) */
+        .radialabxy {
+            position: relative; width: 38vmin; height: 38vmin; border-radius: 50%;
+            overflow: hidden; pointer-events: auto; touch-action: none;
+            border: 2px solid rgba(200,200,200,0.35); background: rgba(20,20,20,0.55);
+        }
+        .radialabxy .sector {
+            position: absolute; inset: 0; display: flex; justify-content: center; align-items: center;
+            font-size: 6vmin; font-weight: bold; color: rgba(255,255,255,0.85);
+        }
+        .radialabxy .s-y { clip-path: polygon(50% 50%, 0 0, 100% 0); background: rgba(253,216,53,0.45); color: #000; align-items: flex-start; padding-top: 3.5vmin; }
+        .radialabxy .s-b { clip-path: polygon(50% 50%, 100% 0, 100% 100%); background: rgba(229,57,53,0.45); justify-content: flex-end; padding-right: 3.5vmin; }
+        .radialabxy .s-a { clip-path: polygon(50% 50%, 100% 100%, 0 100%); background: rgba(67,160,71,0.45); align-items: flex-end; padding-bottom: 3.5vmin; }
+        .radialabxy .s-x { clip-path: polygon(50% 50%, 0 100%, 0 0); background: rgba(30,136,229,0.45); justify-content: flex-start; padding-left: 3.5vmin; }
+        .radialabxy .sector.active { filter: brightness(1.7); box-shadow: inset 0 0 8vmin rgba(255,255,255,0.55); }
+
+        /* Área de mira (FPS) */
+        .lookpad {
+            pointer-events: auto; touch-action: none; flex: 1; min-height: 20vmin;
+            background: rgba(30,120,200,0.10); border: 2px dashed rgba(120,200,255,0.35);
+            border-radius: 3vmin; display: flex; justify-content: center; align-items: center;
+            color: rgba(255,255,255,0.5); font-size: 3vmin;
+        }
+        .lookpad.active { background: rgba(30,120,200,0.22); }
+
+        /* Ações do FPS */
+        .fps-actions { display: flex; flex-wrap: wrap; gap: 2vmin; justify-content: flex-end; align-items: flex-end; }
+        .fps-actions .abtn { width: 12vmin; height: 12vmin; font-size: 3vmin; }
+        .fps-actions .fire { width: 20vmin; height: 20vmin; font-size: 3.2vmin; background: rgba(229,57,53,0.7); }
+        .fps-actions .aim { background: rgba(253,216,53,0.65); color: #000; }
+
+        /* Volante (corrida) */
+        .wheel {
+            pointer-events: auto; touch-action: none; width: 74vmin; max-width: 92vw; height: 16vmin;
+            border-radius: 8vmin; background: rgba(40,40,40,0.4);
+            border: 2px solid rgba(200,200,200,0.35); position: relative;
+        }
+        .wheel .thumb {
+            position: absolute; top: 50%; left: 50%; width: 12vmin; height: 12vmin;
+            margin: -6vmin 0 0 -6vmin; border-radius: 50%;
+            background: rgba(220,220,220,0.6); border: 2px solid rgba(255,255,255,0.5);
+        }
+
+        /* 6 botões (luta) */
+        .abxy6 {
+            display: grid; grid-template-columns: repeat(3, 12vmin);
+            grid-template-rows: repeat(2, 12vmin); gap: 2.2vmin; pointer-events: auto;
+        }
+        .abxy6 .abtn { width: 12vmin; height: 12vmin; font-size: 4vmin; }
+
+        /* Retro */
+        .retro-btns { display: flex; flex-direction: column; align-items: center; gap: 3vmin; }
+        .retro-xy { display: flex; gap: 3vmin; }
+
+        /* Botão de layout (FAB) + seletor */
+        #layout-fab {
+            position: absolute; top: 0.8vmin; right: 1.5vmin; z-index: 30; pointer-events: auto;
+            background: rgba(30,136,229,0.85); color: #fff; border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 2vmin; font-size: 2.8vmin; font-weight: bold; padding: 1.2vmin 2.2vmin;
+        }
+        #layout-sheet {
+            position: absolute; inset: 0; z-index: 40; display: none;
+            justify-content: center; align-items: flex-end; background: rgba(0,0,0,0.55);
+            pointer-events: auto;
+        }
+        #layout-sheet.open { display: flex; }
+        #layout-sheet .sheet-box {
+            width: 100%; max-width: 720px; max-height: 80%; overflow: auto;
+            background: #141418; border-top: 2px solid #333; border-radius: 4vmin 4vmin 0 0;
+            padding: 4vmin; display: grid; grid-template-columns: 1fr 1fr; gap: 2.5vmin;
+        }
+        #layout-sheet .sheet-title { grid-column: 1 / -1; font-size: 3.4vmin; color: #9aa0a6; }
+        #layout-sheet .sheet-item {
+            pointer-events: auto; background: #222; border: 2px solid #3a3a3a;
+            border-radius: 2.5vmin; padding: 3vmin 2vmin; text-align: center;
+            font-size: 3vmin; font-weight: bold;
+        }
+        #layout-sheet .sheet-item.sel { border-color: #1e88e5; background: rgba(30,136,229,0.25); }
+        #layout-sheet .sheet-item.edit { border-color: #43a047; color: #c8e6c9; }
+
+        /* Editor de layout */
+        #edit-fab {
+            position: absolute; top: 0.8vmin; right: 22vmin; z-index: 30; pointer-events: auto;
+            background: rgba(67,160,71,0.9); color: #fff; border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 2vmin; font-size: 2.8vmin; font-weight: bold; padding: 1.2vmin 2.2vmin;
+        }
+        #edit-layer {
+            position: absolute; inset: 0; z-index: 34; display: none;
+            pointer-events: auto; touch-action: none; background: rgba(0,0,0,0.12);
+        }
+        body.editing #edit-layer { display: block; }
+        body.editing #layout-fab, body.editing #edit-fab, body.editing #hud { display: none; }
+        body.mode-tela #edit-fab { display: none; }
+        #overlay [data-unit] { will-change: transform; }
+
+        .edit-box {
+            position: absolute; z-index: 35; pointer-events: none; display: none;
+            border: 2px dashed #1e88e5; border-radius: 1.5vmin;
+            box-shadow: 0 0 0 2px rgba(0,0,0,0.45), 0 0 18px rgba(30,136,229,0.5);
+        }
+        .edit-box .tag {
+            position: absolute; top: -3.6vmin; left: 0; font-size: 2.4vmin; color: #fff;
+            background: #1e88e5; padding: 0.4vmin 1.2vmin; border-radius: 1vmin; white-space: nowrap;
+        }
+        .edit-box .handle {
+            position: absolute; right: -2.4vmin; bottom: -2.4vmin; width: 5vmin; height: 5vmin;
+            background: #1e88e5; border: 2px solid #fff; border-radius: 50%; pointer-events: none;
+        }
+        #edit-bar {
+            position: absolute; left: 0; right: 0; bottom: 0; z-index: 36; display: none;
+            justify-content: space-between; align-items: center; gap: 3vmin;
+            padding: 3vmin 4vmin; background: rgba(20,20,24,0.96); border-top: 2px solid #333;
+        }
+        body.editing #edit-bar { display: flex; }
+        #edit-bar .hint { font-size: 2.8vmin; color: #9aa0a6; }
+        #edit-bar .actions { display: flex; gap: 2.5vmin; }
+        #edit-bar button {
+            pointer-events: auto; font-size: 3.2vmin; font-weight: bold; color: #fff;
+            border: 2px solid #444; border-radius: 2vmin; padding: 2vmin 3vmin; background: #222;
+        }
+        #edit-bar button.primary { background: #1e88e5; border-color: #1e88e5; }
+        #edit-bar button.warn { background: rgba(229,57,53,0.85); border-color: rgba(229,57,53,0.85); }
+
+        /* Erro de vídeo */
+        #video-error {
+            position: absolute; inset: 0; z-index: 20; display: none;
+            flex-direction: column; justify-content: center; align-items: center;
+            gap: 3vmin; text-align: center; padding: 8vmin;
+            background: rgba(0,0,0,0.88); color: #fff; font-size: 4.5vmin;
+        }
+        #video-error .sub { font-size: 3.2vmin; color: #9aa0a6; }
+        body.video-error #video-error { display: flex; }
+        body.mode-controle #video-error { display: none; }
+
+        /* Identificação do aparelho (a partir da tela de gerenciar) */
+        #identify {
+            position: absolute; left: 50%; top: 45%; transform: translate(-50%, -50%) scale(0.9);
+            z-index: 60; pointer-events: none; opacity: 0; transition: opacity .2s, transform .2s;
+            background: rgba(30,136,229,0.95); color: #fff; font-size: 5vmin; font-weight: bold;
+            padding: 4vmin 6vmin; border-radius: 3vmin; text-align: center;
+            border: 3px solid rgba(255,255,255,0.6); box-shadow: 0 0 30px rgba(0,0,0,0.6);
+        }
+        #identify.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+
+        /* Visibilidade conforme a rota */
+        body.mode-tela #overlay,
+        body.mode-tela #hud,
+        body.mode-tela #layout-fab,
+        body.mode-tela #layout-sheet,
+        body.mode-controle #hud,
+        body.mode-controle #video { display: none; }
+    </style>
+</head>
+<body>
+    <video id="video" autoplay muted playsinline></video>
+
+    <div id="hud">
+        <span id="player">Jogador ?</span>
+        <span id="status">Conectando...</span>
+    </div>
+
+    <div id="overlay"></div>
+
+    <button id="layout-fab" type="button">Layout</button>
+    <div id="layout-sheet"><div class="sheet-box"></div></div>
+
+    <button id="edit-fab" type="button">Editar</button>
+    <div id="edit-layer"></div>
+    <div id="edit-box" class="edit-box"><span class="tag"></span><span class="handle"></span></div>
+    <div id="edit-bar">
+        <span class="hint">Toque para selecionar · arraste para mover · alça para redimensionar</span>
+        <span class="actions">
+            <button id="edit-reset" class="warn" type="button">Restaurar</button>
+            <button id="edit-done" class="primary" type="button">Concluir</button>
+        </span>
+    </div>
+
+    <div id="video-error">
+        <p>Sem vídeo</p>
+        <p id="video-error-msg" class="sub"></p>
+    </div>
+
+    <script>
+        /* ---------------- Modo conforme a rota ---------------- */
+        const mode = location.pathname.startsWith('/controle') ? 'controle'
+                   : location.pathname.startsWith('/tela') ? 'tela'
+                   : 'portatil';
+        document.body.classList.add('mode-' + mode);
+
+        /* ---------------- Impede zoom (duplo toque / pinça) ---------------- */
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (e) => {
+            const now = Date.now();
+            if (now - lastTouchEnd <= 300) e.preventDefault();
+            lastTouchEnd = now;
+        }, { passive: false });
+        document.addEventListener('gesturestart', (e) => e.preventDefault());
+        document.addEventListener('dblclick', (e) => e.preventDefault());
+
+        /* ---------------- WebSocket de controle ---------------- */
+        const statusEl = document.getElementById('status');
+        const playerEl = document.getElementById('player');
+        const wsProtocol = location.protocol === 'https:' ? 'wss' : 'ws';
+        let ws = null;
+        let pingTimer = null;
+
+        /* UUID estável por celular (mantém o número do Jogador ao reconectar) */
+        function deviceId() {
+            let d = localStorage.getItem('manete.device');
+            if (!d) {
+                d = (crypto.randomUUID ? crypto.randomUUID()
+                    : 'd' + Date.now().toString(16) + Math.random().toString(16).slice(2));
+                localStorage.setItem('manete.device', d);
+            }
+            return d;
+        }
+        const DEVICE = new URLSearchParams(location.search).get('device') || deviceId();
+        const offerQS = (() => {
+            const q = new URLSearchParams(location.search);
+            q.set('device', DEVICE);
+            return '?' + q.toString();
+        })();
+        const wsQS = (() => {
+            const q = new URLSearchParams(location.search);
+            q.set('device', DEVICE);
+            if (mode === 'tela') q.set('view', '1');
+            const n = localStorage.getItem('manete.name');
+            if (n) q.set('name', n);
+            return '?' + q.toString();
+        })();
+
+        function wsSend(obj) {
+            if (ws && ws.readyState === WebSocket.OPEN) ws.send(JSON.stringify(obj));
+        }
+
+        function showIdentify(msg) {
+            let el = document.getElementById('identify');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'identify';
+                document.body.appendChild(el);
+            }
+            el.textContent = 'Este aparelho: ' + (msg.name || '?')
+                + (msg.player ? ' (Jogador ' + msg.player + ')' : '');
+            el.classList.add('show');
+            if (navigator.vibrate) navigator.vibrate([120, 80, 120]);
+            clearTimeout(el._t);
+            el._t = setTimeout(() => el.classList.remove('show'), 3000);
+        }
+
+        function connectWS() {
+            ws = new WebSocket(`${wsProtocol}://${location.host}/ws${wsQS}`);
+
+            ws.onmessage = (ev) => {
+                try {
+                    const msg = JSON.parse(ev.data);
+                    if (msg.type === 'slot') {
+                        if (msg.view) playerEl.textContent = 'Tela';
+                        else playerEl.textContent = msg.player ? `Jogador ${msg.player}` : 'Espectador';
+                    } else if (msg.type === 'identify') {
+                        showIdentify(msg);
+                    }
+                } catch (_) {}
+            };
+
+            ws.onopen = () => {
+                statusEl.textContent = mode === 'tela' ? 'Tela OK' : 'Controle OK';
+                if (pingTimer) clearInterval(pingTimer);
+                pingTimer = setInterval(() => wsSend({ type: 'ping' }), 15000);
+            };
+            ws.onclose = (ev) => {
+                if (pingTimer) { clearInterval(pingTimer); pingTimer = null; }
+                if (ev && (ev.code === 4001 || ev.code === 4002)) {
+                    statusEl.textContent = 'Desconectado pelo painel';
+                    return;  // encerrado pelo servidor (outra aba/aparelho ou painel): nao reconecta
+                }
+                statusEl.textContent = 'Reconectando controle...';
+                setTimeout(connectWS, 1500);
+            };
+            ws.onerror = () => ws && ws.close();
+        }
+
+        /* ---------------- InputManager ---------------- */
+        const Input = {
+            button(name, down) { wsSend({ type: 'button', button: name, action: down ? 'press' : 'release' }); },
+            trigger(which, value) { wsSend({ type: 'trigger', which, value }); },
+            stick(which, x, y) { wsSend({ type: 'stick', which, x, y }); },
+        };
+
+        /* ---------------- Resposta do analógico (deadzone + curva + ganho) ---------------- */
+        const STICK = { deadzone: 0.05, curve: 0.7, gain: 1.3 };
+        function shape(t) {
+            t = Math.max(0, Math.min(1, t));
+            if (t <= STICK.deadzone) return 0;
+            t = (t - STICK.deadzone) / (1 - STICK.deadzone);
+            return Math.min(1, Math.pow(t, STICK.curve) * STICK.gain);
+        }
+
+        /* ---------------- Helpers de HTML ---------------- */
+        function topbarHTML(center) {
+            center = center || '<div class="small" data-btn="BACK" data-unit="btn-BACK">Back</div><div class="small" data-btn="START" data-unit="btn-START">Start</div>';
+            return `<div class="topbar">
+                <div class="group">
+                    <div class="small trig" data-trigger="left" data-unit="btn-LT">LT</div>
+                    <div class="small" data-btn="LB" data-unit="btn-LB">LB</div>
+                </div>
+                <div class="group">${center}</div>
+                <div class="group">
+                    <div class="small" data-btn="RB" data-unit="btn-RB">RB</div>
+                    <div class="small trig" data-trigger="right" data-unit="btn-RT">RT</div>
+                </div>
+            </div>`;
+        }
+
+        function dpadHTML(extra) {
+            extra = extra || '';
+            return `<div class="dpad ${extra}" data-unit="dpad">
+                <div class="btn d-up" data-btn="UP">▲</div>
+                <div class="btn d-left" data-btn="LEFT">◀</div>
+                <div class="btn d-right" data-btn="RIGHT">▶</div>
+                <div class="btn d-down" data-btn="DOWN">▼</div>
+            </div>`;
+        }
+
+        function abxyHTML(extra) {
+            extra = extra || '';
+            return `<div class="abxy ${extra}" data-unit="abxy">
+                <div class="btn a-y" data-btn="Y">Y</div>
+                <div class="btn a-x" data-btn="X">X</div>
+                <div class="btn a-b" data-btn="B">B</div>
+                <div class="btn a-a" data-btn="A">A</div>
+            </div>`;
+        }
+
+        /* ---------------- Widgets (Pointer Events) ---------------- */
+        function bindHold(el, onDown, onUp) {
+            let active = false;
+            const down = (e) => { e.preventDefault(); if (active) return; active = true; el.classList.add('pressed'); onDown(); };
+            const up = (e) => { if (!active) return; active = false; el.classList.remove('pressed'); onUp(); };
+            el.addEventListener('pointerdown', down);
+            el.addEventListener('pointerup', up);
+            el.addEventListener('pointercancel', up);
+            el.addEventListener('pointerleave', up);
+        }
+
+        function wireStick(el) {
+            const knob = el.querySelector('.knob, .dot');
+            const which = el.dataset.stick;
+            let id = null, last = 0;
+            function move(e) {
+                const r = el.getBoundingClientRect();
+                const cx = r.left + r.width / 2, cy = r.top + r.height / 2, max = r.width / 2;
+                let dx = e.clientX - cx, dy = e.clientY - cy;
+                const len = Math.hypot(dx, dy);
+                if (len > max) { dx *= max / len; dy *= max / len; }
+                if (knob) knob.style.transform = `translate(${dx}px, ${dy}px)`;
+                const now = performance.now();
+                if (now - last > 33) {
+                    last = now;
+                    const m = shape(len / max);
+                    const ux = len > 0 ? dx / len : 0, uy = len > 0 ? dy / len : 0;
+                    Input.stick(which, ux * m, -uy * m);
+                }
+            }
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); id = e.pointerId; el.setPointerCapture(e.pointerId); move(e);
+            });
+            el.addEventListener('pointermove', (e) => { if (id === e.pointerId) { e.preventDefault(); move(e); } });
+            const end = (e) => {
+                if (id !== e.pointerId) return;
+                id = null;
+                if (knob) knob.style.transform = 'translate(0,0)';
+                Input.stick(which, 0, 0);
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        function wireRadialABXY(el) {
+            const sectors = {
+                Y: el.querySelector('.s-y'), B: el.querySelector('.s-b'),
+                A: el.querySelector('.s-a'), X: el.querySelector('.s-x'),
+            };
+            const counts = { Y: 0, B: 0, A: 0, X: 0 };
+            const engaged = new Set(), cur = new Map();
+            function refresh() {
+                for (const b of ['Y', 'B', 'A', 'X']) sectors[b].classList.toggle('active', counts[b] > 0);
+            }
+            function sectorAt(e) {
+                const r = el.getBoundingClientRect();
+                const dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+                if (Math.hypot(dx, dy) < r.width * 0.06) return null;
+                const ang = Math.atan2(-dy, dx) * 180 / Math.PI; // topo = +90°
+                if (ang > 45 && ang <= 135) return 'Y';
+                if (ang <= -135 || ang > 135) return 'X';
+                if (ang > -135 && ang <= -45) return 'A';
+                return 'B';
+            }
+            function press(btn) { if (counts[btn] === 0) Input.button(btn, true); counts[btn]++; refresh(); }
+            function release(btn) { counts[btn]--; if (counts[btn] <= 0) { counts[btn] = 0; Input.button(btn, false); } refresh(); }
+            function apply(id, btn) {
+                const prev = cur.has(id) ? cur.get(id) : null;
+                if (prev === btn) return;
+                if (prev) release(prev);
+                if (btn) press(btn);
+                cur.set(id, btn);
+            }
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); el.setPointerCapture(e.pointerId);
+                engaged.add(e.pointerId); apply(e.pointerId, sectorAt(e));
+            });
+            el.addEventListener('pointermove', (e) => {
+                if (!engaged.has(e.pointerId)) return;
+                e.preventDefault(); apply(e.pointerId, sectorAt(e));
+            });
+            const end = (e) => {
+                if (!engaged.has(e.pointerId)) return;
+                const prev = cur.has(e.pointerId) ? cur.get(e.pointerId) : null;
+                if (prev) release(prev);
+                engaged.delete(e.pointerId); cur.delete(e.pointerId);
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        function wireLook(el) {
+            const which = el.dataset.look || 'right';
+            const SENS = 3.0;
+            let id = null, ox = 0, oy = 0, last = 0;
+            function move(e) {
+                const r = el.getBoundingClientRect();
+                let dx = (e.clientX - ox) / (r.width / 2) * SENS;
+                let dy = (e.clientY - oy) / (r.height / 2) * SENS;
+                const len = Math.hypot(dx, dy);
+                if (len > 0) {
+                    const m = shape(Math.min(1, len));
+                    dx = dx / len * m; dy = dy / len * m;
+                }
+                const now = performance.now();
+                if (now - last > 16) { last = now; Input.stick(which, dx, -dy); }
+            }
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); id = e.pointerId; ox = e.clientX; oy = e.clientY;
+                el.setPointerCapture(e.pointerId); el.classList.add('active');
+            });
+            el.addEventListener('pointermove', (e) => { if (id === e.pointerId) { e.preventDefault(); move(e); } });
+            const end = (e) => {
+                if (id !== e.pointerId) return;
+                id = null; el.classList.remove('active'); Input.stick(which, 0, 0);
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        function wireWheel(el) {
+            const thumb = el.querySelector('.thumb');
+            const which = el.dataset.wheel || 'left';
+            let id = null, last = 0;
+            function move(e) {
+                const r = el.getBoundingClientRect();
+                const cx = r.left + r.width / 2, max = r.width / 2;
+                let dx = e.clientX - cx;
+                if (Math.abs(dx) > max) dx = Math.sign(dx) * max;
+                if (thumb) thumb.style.transform = `translateX(${dx}px)`;
+                const now = performance.now();
+                if (now - last > 33) {
+                    last = now;
+                    const m = shape(Math.abs(dx) / max);
+                    Input.stick(which, Math.sign(dx) * m, 0);
+                }
+            }
+            el.addEventListener('pointerdown', (e) => {
+                e.preventDefault(); id = e.pointerId; el.setPointerCapture(e.pointerId); move(e);
+            });
+            el.addEventListener('pointermove', (e) => { if (id === e.pointerId) { e.preventDefault(); move(e); } });
+            const end = (e) => {
+                if (id !== e.pointerId) return;
+                id = null; if (thumb) thumb.style.transform = 'translateX(0)'; Input.stick(which, 0, 0);
+            };
+            el.addEventListener('pointerup', end);
+            el.addEventListener('pointercancel', end);
+        }
+
+        function wire(root) {
+            root.querySelectorAll('[data-btn]').forEach((el) => bindHold(el,
+                () => Input.button(el.dataset.btn, true),
+                () => Input.button(el.dataset.btn, false)));
+            root.querySelectorAll('[data-trigger]').forEach((el) => bindHold(el,
+                () => Input.trigger(el.dataset.trigger, 1),
+                () => Input.trigger(el.dataset.trigger, 0)));
+            root.querySelectorAll('.stick').forEach(wireStick);
+            root.querySelectorAll('.radialabxy').forEach(wireRadialABXY);
+            root.querySelectorAll('.lookpad').forEach(wireLook);
+            root.querySelectorAll('.wheel').forEach(wireWheel);
+            root.querySelectorAll('[data-tilt]').forEach((el) =>
+                el.addEventListener('pointerdown', (e) => { e.preventDefault(); toggleTilt(el); }));
+        }
+
+        /* ---------------- Tilt (corrida; best-effort) ---------------- */
+        let tiltEnabled = false, tiltHandler = null;
+        function tiltListen() {
+            tiltHandler = (e) => {
+                const g = e.gamma || 0;
+                let x = Math.max(-1, Math.min(1, g / 30));
+                if (window.orientation === -90) x = -x;
+                Input.stick('left', Math.sign(x) * shape(Math.abs(x)), 0);
+            };
+            window.addEventListener('deviceorientation', tiltHandler);
+        }
+        function toggleTilt(btn) {
+            if (tiltEnabled) {
+                tiltEnabled = false;
+                if (tiltHandler) window.removeEventListener('deviceorientation', tiltHandler);
+                btn.classList.remove('pressed');
+                Input.stick('left', 0, 0);
+                return;
+            }
+            const enable = () => { tiltEnabled = true; btn.classList.add('pressed'); tiltListen(); };
+            if (typeof DeviceOrientationEvent !== 'undefined'
+                && typeof DeviceOrientationEvent.requestPermission === 'function') {
+                DeviceOrientationEvent.requestPermission()
+                    .then((r) => { if (r === 'granted') enable(); })
+                    .catch(() => {});
+            } else if (typeof DeviceOrientationEvent !== 'undefined') {
+                enable();
+            }
+        }
+
+        /* ---------------- Layouts ---------------- */
+        const LAYOUTS = {
+            classic: {
+                name: 'Classico',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region bl">
+                            <div class="stick classic" data-stick="left" data-unit="stick-left"><span class="label">L</span><div class="knob"></div></div>
+                            ${dpadHTML()}
+                        </div>
+                        <div class="region br">
+                            <div class="stick classic" data-stick="right" data-unit="stick-right"><span class="label">R</span><div class="knob"></div></div>
+                            ${abxyHTML()}
+                        </div>`;
+                },
+            },
+
+            precision: {
+                name: 'Precisao',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region bl">
+                            <div class="stick touch big" data-stick="left" data-unit="stick-left"><span class="label">Mover</span><div class="dot"></div></div>
+                            ${dpadHTML()}
+                        </div>
+                        <div class="region br">
+                            <div class="stick classic mini" data-stick="right" data-unit="stick-right"><div class="knob"></div></div>
+                            <div class="radialabxy" data-unit="radial">
+                                <div class="sector s-y">Y</div>
+                                <div class="sector s-b">B</div>
+                                <div class="sector s-a">A</div>
+                                <div class="sector s-x">X</div>
+                            </div>
+                        </div>`;
+                },
+            },
+
+            fps: {
+                name: 'FPS',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region left">
+                            <div class="stick classic" data-stick="left" data-unit="stick-left"><span class="label">Mover</span><div class="knob"></div></div>
+                        </div>
+                        <div class="region right">
+                            <div class="lookpad" data-look="right" data-unit="look">Arrastar para mirar</div>
+                            <div class="fps-actions">
+                                <div class="abtn" data-btn="LB" data-unit="action-LB">LB</div>
+                                <div class="abtn" data-btn="RB" data-unit="action-RB">RB</div>
+                                <div class="abtn" data-btn="Y" data-unit="action-Y">Y</div>
+                                <div class="abtn fire" data-trigger="right" data-unit="action-shoot">ATIRAR</div>
+                                <div class="abtn" data-btn="X" data-unit="action-X">X</div>
+                                <div class="abtn" data-btn="B" data-unit="action-B">B</div>
+                                <div class="abtn" data-btn="A" data-unit="action-A">A</div>
+                                <div class="abtn aim" data-trigger="left" data-unit="action-aim">MIRA</div>
+                            </div>
+                        </div>`;
+                },
+            },
+
+            racing: {
+                name: 'Corrida',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region bl">
+                            <div class="small" data-btn="A" data-unit="btn-gear-up">Marcha +</div>
+                            <div class="small" data-btn="B" data-unit="btn-gear-down">Marcha -</div>
+                            <div class="small" data-btn="RB" data-unit="btn-handbrake">Freio mao</div>
+                            <div class="small" data-tilt="1" data-unit="btn-tilt">Tilt</div>
+                        </div>
+                        <div class="region br">
+                            <div class="pedal" data-trigger="right" data-unit="pedal-accel">ACEL</div>
+                            <div class="pedal" data-trigger="left" data-unit="pedal-brake">FREIO</div>
+                        </div>
+                        <div class="region bottom">
+                            <div class="wheel" data-wheel="left" data-unit="wheel"><div class="thumb"></div></div>
+                        </div>`;
+                },
+            },
+
+            fight: {
+                name: 'Luta/Arcade',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region bl">${dpadHTML('big')}</div>
+                        <div class="region br">
+                            <div class="abxy6" data-unit="abxy6">
+                                <div class="abtn" data-btn="LB">LB</div>
+                                <div class="abtn" data-btn="RB">RB</div>
+                                <div class="abtn" data-btn="Y">Y</div>
+                                <div class="abtn" data-btn="X">X</div>
+                                <div class="abtn" data-btn="B">B</div>
+                                <div class="abtn" data-btn="A">A</div>
+                            </div>
+                        </div>`;
+                },
+            },
+
+            retro: {
+                name: 'Plataforma/Retro',
+                build(root) {
+                    root.innerHTML = `
+                        ${topbarHTML()}
+                        <div class="region bl">${dpadHTML('big')}</div>
+                        <div class="region br">
+                            <div class="retro-btns">
+                                <div class="retro-xy">
+                                    <div class="abtn xsmall" data-btn="X" data-unit="retro-x">X</div>
+                                    <div class="abtn xsmall" data-btn="Y" data-unit="retro-y">Y</div>
+                                </div>
+                                <div class="abtn big" data-btn="B" data-unit="retro-b">B</div>
+                                <div class="abtn big" data-btn="A" data-unit="retro-a">A</div>
+                            </div>
+                        </div>`;
+                },
+            },
+        };
+
+        /* ---------------- Seleção / persistência ---------------- */
+        const LAYOUT_KEY = 'manete.layout';
+        let currentLayout = null;
+
+        function resolveLayout() {
+            const url = new URLSearchParams(location.search).get('layout');
+            if (url && LAYOUTS[url]) return url;
+            const saved = localStorage.getItem(LAYOUT_KEY);
+            if (saved && LAYOUTS[saved]) return saved;
+            return 'classic';
+        }
+
+        function buildSheet() {
+            const box = document.querySelector('#layout-sheet .sheet-box');
+            box.innerHTML = '<div class="sheet-title">Escolha o layout de controle</div>'
+                + Object.entries(LAYOUTS).map(([id, l]) =>
+                    `<div class="sheet-item${id === currentLayout ? ' sel' : ''}" data-layout="${id}">${l.name}</div>`
+                ).join('')
+                + '<div class="sheet-item edit" data-edit="1">Editar este layout</div>';
+            box.querySelectorAll('.sheet-item').forEach((it) => {
+                it.addEventListener('pointerdown', (e) => {
+                    e.preventDefault(); e.stopPropagation();
+                    if (it.dataset.edit) {
+                        document.getElementById('layout-sheet').classList.remove('open');
+                        enterEdit();
+                    } else {
+                        selectLayout(it.dataset.layout);
+                    }
+                });
+            });
+        }
+
+        function selectLayout(id) {
+            localStorage.setItem(LAYOUT_KEY, id);
+            document.getElementById('layout-sheet').classList.remove('open');
+            renderLayout(id);
+        }
+
+        function renderLayout(id) {
+            currentLayout = LAYOUTS[id] ? id : 'classic';
+            const root = document.getElementById('overlay');
+            root.className = 'layout-' + currentLayout;
+            root.innerHTML = '';
+            LAYOUTS[currentLayout].build(root);
+            applyOverrides(root);
+            if (!editMode) wire(root);
+            buildSheet();
+        }
+
+        document.getElementById('layout-fab').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            document.getElementById('layout-sheet').classList.toggle('open');
+        });
+        document.getElementById('layout-sheet').addEventListener('pointerdown', (e) => {
+            if (e.target.id === 'layout-sheet') e.target.classList.remove('open');
+        });
+
+        /* ---------------- Editor de layout (mover / redimensionar) ---------------- */
+        const editKey = (layout) => 'manete.edit.' + layout;
+        let editMode = false;
+        let editSel = null;
+        let editDrag = null;
+
+        function readOverrides(layout) {
+            try { return JSON.parse(localStorage.getItem(editKey(layout))) || {}; }
+            catch (_) { return {}; }
+        }
+        function saveOverrides(layout, data) {
+            localStorage.setItem(editKey(layout), JSON.stringify(data));
+        }
+        function unitTransform(o) {
+            if (!o) return '';
+            const parts = [];
+            if (o.x || o.y) parts.push(`translate(${(o.x || 0).toFixed(2)}vmin, ${(o.y || 0).toFixed(2)}vmin)`);
+            if (o.s != null && o.s !== 1) parts.push(`scale(${o.s.toFixed(3)})`);
+            return parts.join(' ');
+        }
+        function currentScale(el) {
+            const o = readOverrides(currentLayout)[el.dataset.unit];
+            return (o && o.s) || 1;
+        }
+        function applyOverrides(root) {
+            const ov = readOverrides(currentLayout);
+            root.querySelectorAll('[data-unit]').forEach((el) => {
+                el.style.transform = unitTransform(ov[el.dataset.unit]);
+            });
+        }
+
+        const editLayer = document.getElementById('edit-layer');
+        const editBox = document.getElementById('edit-box');
+
+        function editUnits() { return Array.from(document.querySelectorAll('#overlay [data-unit]')); }
+        function unitAt(x, y) {
+            const list = editUnits();
+            for (let i = list.length - 1; i >= 0; i--) {
+                const r = list[i].getBoundingClientRect();
+                if (x >= r.left && x <= r.right && y >= r.top && y <= r.bottom) return list[i];
+            }
+            return null;
+        }
+        function updateEditBox() {
+            if (!editMode || !editSel) { editBox.style.display = 'none'; return; }
+            const r = editSel.getBoundingClientRect();
+            editBox.style.display = 'block';
+            editBox.style.left = r.left + 'px';
+            editBox.style.top = r.top + 'px';
+            editBox.style.width = r.width + 'px';
+            editBox.style.height = r.height + 'px';
+            const s = currentScale(editSel);
+            editBox.querySelector('.tag').textContent = editSel.dataset.unit + '  ' + s.toFixed(2) + 'x';
+        }
+        function clearSelection() { editSel = null; editDrag = null; updateEditBox(); }
+
+        function enterEdit() {
+            if (mode === 'tela') return;
+            editMode = true;
+            document.body.classList.add('editing');
+            clearSelection();
+            renderLayout(currentLayout);
+        }
+        function exitEdit() {
+            editMode = false;
+            document.body.classList.remove('editing');
+            clearSelection();
+            renderLayout(currentLayout);
+        }
+
+        editLayer.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            const x = e.clientX, y = e.clientY;
+            if (editSel) {
+                const hr = editBox.querySelector('.handle').getBoundingClientRect();
+                if (x >= hr.left && x <= hr.right && y >= hr.top && y <= hr.bottom) {
+                    const r = editSel.getBoundingClientRect();
+                    const hx = r.left + r.width / 2, hy = r.top + r.height / 2;
+                    editDrag = { kind: 'size', id: editSel.dataset.unit, hx, hy,
+                        d0: Math.hypot(x - hx, y - hy) || 1, os: currentScale(editSel) };
+                    try { editLayer.setPointerCapture(e.pointerId); } catch (_) {}
+                    return;
+                }
+            }
+            editSel = unitAt(x, y);
+            updateEditBox();
+            if (!editSel) { editDrag = null; return; }
+            const o = readOverrides(currentLayout)[editSel.dataset.unit] || {};
+            editDrag = { kind: 'move', id: editSel.dataset.unit, sx: x, sy: y, ox: o.x || 0, oy: o.y || 0, os: o.s || 1 };
+            try { editLayer.setPointerCapture(e.pointerId); } catch (_) {}
+        });
+
+        editLayer.addEventListener('pointermove', (e) => {
+            if (!editDrag || !editSel) return;
+            e.preventDefault();
+            const vm = Math.min(window.innerWidth, window.innerHeight) / 100;
+            const ov = readOverrides(currentLayout);
+            const o = Object.assign({ x: 0, y: 0, s: 1 }, ov[editDrag.id]);
+            if (editDrag.kind === 'move') {
+                o.x = editDrag.ox + (e.clientX - editDrag.sx) / vm;
+                o.y = editDrag.oy + (e.clientY - editDrag.sy) / vm;
+                o.s = editDrag.os;
+            } else {
+                const d = Math.hypot(e.clientX - editDrag.hx, e.clientY - editDrag.hy);
+                o.s = Math.max(0.3, Math.min(3, editDrag.os * (d / editDrag.d0)));
+            }
+            ov[editDrag.id] = o;
+            saveOverrides(currentLayout, ov);
+            editSel.style.transform = unitTransform(o);
+            updateEditBox();
+        });
+
+        const endEditDrag = () => { editDrag = null; };
+        editLayer.addEventListener('pointerup', endEditDrag);
+        editLayer.addEventListener('pointercancel', endEditDrag);
+
+        document.getElementById('edit-fab').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            editMode ? exitEdit() : enterEdit();
+        });
+        document.getElementById('edit-done').addEventListener('pointerdown', (e) => {
+            e.preventDefault(); exitEdit();
+        });
+        document.getElementById('edit-reset').addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            localStorage.removeItem(editKey(currentLayout));
+            clearSelection();
+            renderLayout(currentLayout);
+        });
+        window.addEventListener('resize', updateEditBox);
+
+        /* ---------------- WebRTC (vídeo) ---------------- */
+        const videoEl = document.getElementById('video');
+        const videoErrorMsg = document.getElementById('video-error-msg');
+        let pc = null;
+        let reconnectTimer = null;
+        let reconnecting = false;
+
+        function showVideoError(msg) {
+            videoErrorMsg.textContent = msg || '';
+            document.body.classList.add('video-error');
+        }
+        function hideVideoError() {
+            document.body.classList.remove('video-error');
+        }
+        function stopVideo() {
+            if (reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+            reconnecting = false;
+            if (pc) {
+                pc.ontrack = null;
+                pc.onconnectionstatechange = null;
+                try { pc.close(); } catch (_) {}
+                pc = null;
+            }
+            videoEl.srcObject = null;
+        }
+        function scheduleReconnect(reason) {
+            if (reconnecting) return;
+            reconnecting = true;
+            statusEl.textContent = reason;
+            showVideoError('Reconectando...');
+            reconnectTimer = setTimeout(() => {
+                reconnectTimer = null;
+                reconnecting = false;
+                startVideo().catch(e => console.error(e));
+            }, 1500);
+        }
+        async function startVideo() {
+            stopVideo();
+            pc = new RTCPeerConnection({ iceServers: [] });
+            pc.addTransceiver('video', { direction: 'recvonly' });
+
+            pc.ontrack = (ev) => {
+                videoEl.srcObject = ev.streams[0];
+                videoEl.play().catch(() => {});
+                hideVideoError();
+            };
+            pc.onconnectionstatechange = () => {
+                if (!pc) return;
+                if (pc.connectionState === 'connected') {
+                    statusEl.textContent = 'Conectado';
+                    hideVideoError();
+                } else if (['failed', 'disconnected', 'closed'].includes(pc.connectionState)) {
+                    scheduleReconnect('Reconectando vídeo...');
+                }
+            };
+
+            const offer = await pc.createOffer();
+            await pc.setLocalDescription(offer);
+            await new Promise(resolve => {
+                if (pc.iceGatheringState === 'complete') return resolve();
+                pc.addEventListener('icegatheringstatechange', () => {
+                    if (pc.iceGatheringState === 'complete') resolve();
+                });
+            });
+
+            const resp = await fetch('/offer' + offerQS, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ sdp: pc.localDescription.sdp, type: pc.localDescription.type }),
+            });
+            if (!resp.ok) throw new Error('offer falhou: ' + resp.status);
+            const answer = await resp.json();
+            await pc.setRemoteDescription(answer);
+        }
+
+        window.addEventListener('pagehide', () => {
+            stopVideo();
+            if (ws) {
+                ws.onclose = null;
+                try { ws.close(); } catch (_) {}
+                ws = null;
+            }
+        });
+
+        /* ---------------- Init ---------------- */
+        renderLayout(resolveLayout());
+        connectWS();
+        if (mode !== 'controle') {
+            startVideo().catch(e => { console.error(e); scheduleReconnect('Erro no vídeo'); });
+        }
+    </script>
+</body>
+</html>

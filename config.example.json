@@ -1,0 +1,8 @@
+{
+  "out_width": 960,
+  "fps": 30,
+  "bitrate_kbps": 3000,
+  "preset": "veryfast",
+  "encoder": "libx264",
+  "token": ""
+}

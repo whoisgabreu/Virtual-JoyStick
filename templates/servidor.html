@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Servidor - Manete</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; min-height: 100%; background: #0b0b0d; color: #fff; font-family: Arial, sans-serif; }
+    body { display: flex; flex-direction: column; gap: 3vmin; padding: 4vmin; max-width: 1100px; margin: 0 auto; }
+    header { display: flex; align-items: center; justify-content: space-between; gap: 3vmin; flex-wrap: wrap; }
+    h1 { font-size: 5.5vmin; font-weight: bold; }
+    .sub { font-size: 2.8vmin; color: #8a8a8a; margin-top: 1vmin; }
+    .badge { display: inline-flex; align-items: center; gap: 1.5vmin; font-size: 3vmin; font-weight: bold;
+             padding: 1.5vmin 3vmin; border-radius: 99px; border: 2px solid #2c2c34; }
+    .badge .dot { width: 2vmin; height: 2vmin; border-radius: 50%; background: #7fff7f; }
+    .badge.off { border-color: #4a1f1f; }
+    .badge.off .dot { background: #ff8a80; }
+
+    .connect { display: flex; gap: 4vmin; align-items: center; flex-wrap: wrap;
+               background: #16161a; border: 2px solid #26262c; border-radius: 3vmin; padding: 4vmin; }
+    .connect .info { flex: 1 1 320px; display: flex; flex-direction: column; gap: 2vmin; min-width: 0; }
+    .connect .k { font-size: 2.8vmin; color: #8a8a8a; }
+    .urlrow { display: flex; gap: 2vmin; align-items: center; flex-wrap: wrap; }
+    .url { font-size: 5vmin; font-weight: bold; color: #7fb8ff; word-break: break-all; }
+    button.copy { font-size: 3vmin; font-weight: bold; color: #fff; background: #1e88e5; border: none;
+                  border-radius: 2vmin; padding: 2vmin 3.5vmin; cursor: pointer; }
+    button.copy:active { filter: brightness(1.3); }
+    .qr { width: 34vmin; height: 34vmin; image-rendering: pixelated; background: #fff; border-radius: 2vmin; padding: 1.5vmin; }
+
+    .stats { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2.5vmin; }
+    @media (min-width: 720px) { .stats { grid-template-columns: repeat(4, 1fr); } }
+    .stat { display: flex; flex-direction: column; gap: 1.5vmin; background: #16161a; border: 2px solid #26262c;
+            border-radius: 3vmin; padding: 3.5vmin; }
+    .stat .k { font-size: 2.8vmin; color: #8a8a8a; }
+    .stat .v { font-size: 6vmin; font-weight: bold; line-height: 1; }
+    .stat .v.ok { color: #7fff7f; }
+    .stat .v.bad { color: #ff8a80; }
+    .stat .v small { font-size: 2.8vmin; color: #8a8a8a; font-weight: normal; }
+
+    .foot { display: flex; align-items: center; justify-content: space-between; gap: 3vmin; flex-wrap: wrap; }
+    a.link { color: #9aa0a6; font-size: 3vmin; text-decoration: none; border-bottom: 1px solid #3a3a3a; padding-bottom: 0.5vmin; }
+</style>
+</head>
+<body>
+    <header>
+        <div>
+            <h1>Servidor Manete</h1>
+            <p class="sub">Conecte o celular pelo endereco ou pelo QR code.</p>
+        </div>
+        <span class="badge" id="badge"><span class="dot"></span><span id="badge-text">online</span></span>
+    </header>
+
+    <div class="connect">
+        <div class="info">
+            <span class="k">Endereco de acesso</span>
+            <div class="urlrow">
+                <span class="url" id="url">{{access_url}}</span>
+                <button class="copy" id="copy">Copiar</button>
+            </div>
+            <span class="k" id="hint">{{host}}:{{port}}</span>
+        </div>
+        <img class="qr" id="qr" src="{{qr_src}}" alt="QR code do endereco">
+    </div>
+
+    <div class="stats">
+        <div class="stat"><span class="k">Telas conectadas</span><span class="v" id="st-viewers">-</span></div>
+        <div class="stat"><span class="k">Controles</span><span class="v" id="st-controllers">-</span></div>
+        <div class="stat"><span class="k">Video</span><span class="v" id="st-video">-</span></div>
+        <div class="stat"><span class="k">Encoder</span><span class="v" id="st-encoder">-</span></div>
+    </div>
+
+    <div class="foot">
+        <a class="link" id="panel" href="/">Abrir painel</a>
+        <a class="link" href="/servidor">Atualizar</a>
+    </div>
+
+    <script>
+        var qs = location.search; // ?token=... (propaga p/ links protegidos)
+        document.getElementById("panel").setAttribute("href", "/" + qs);
+
+        document.getElementById("copy").addEventListener("click", function () {
+            var text = document.getElementById("url").textContent;
+            var done = function () {
+                var b = document.getElementById("copy");
+                b.textContent = "Copiado";
+                setTimeout(function () { b.textContent = "Copiar"; }, 1500);
+            };
+            if (navigator.clipboard) { navigator.clipboard.writeText(text).then(done, done); }
+            else {
+                var t = document.createElement("textarea");
+                t.value = text; document.body.appendChild(t); t.select();
+                try { document.execCommand("copy"); } catch (e) {}
+                document.body.removeChild(t); done();
+            }
+        });
+
+        function loadStatus() {
+            fetch("/status").then(function (r) { return r.json(); }).then(function (s) {
+                var c = s.controllers || {};
+                var v = s.config || {};
+                var act = (c.active != null ? c.active : c.used) || 0;
+                var res = c.reserved || 0;
+                document.getElementById("st-viewers").textContent = String(s.viewers || 0);
+                document.getElementById("st-controllers").innerHTML =
+                    act + " <small>/ " + (c.total || 0) + (res ? " (+" + res + " reserv.)" : "") + "</small>";
+                document.getElementById("st-video").textContent = (v.out_width || "?") + "px";
+                document.getElementById("st-encoder").innerHTML =
+                    "<small>" + (v.encoder || "?") + "</small>";
+                var badge = document.getElementById("badge");
+                badge.classList.remove("off");
+                document.getElementById("badge-text").textContent = "online";
+            }).catch(function () {
+                var badge = document.getElementById("badge");
+                badge.classList.add("off");
+                document.getElementById("badge-text").textContent = "offline";
+            });
+        }
+
+        loadStatus();
+        setInterval(loadStatus, 2000);
+    </script>
+</body>
+</html>
